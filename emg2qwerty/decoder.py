@@ -14,7 +14,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field, InitVar
 from typing import Any, ClassVar
 
-import kenlm
+try:
+    import kenlm
+except ModuleNotFoundError:
+    kenlm = None  # type: ignore[assignment]
+
 import numpy as np
 
 from emg2qwerty.charset import CharacterSet, charset

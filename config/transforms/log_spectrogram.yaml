@@ -25,13 +25,29 @@ specaug:
   n_freq_masks: 2
   freq_mask_param: 4
 
+gaussian_noise:
+  _target_: emg2qwerty.transforms.GaussianNoise
+  std: 0.05  # 5% of per-sample signal std
+
+amplitude_scale:
+  _target_: emg2qwerty.transforms.RandomAmplitudeScale
+  min_scale: 0.75
+  max_scale: 1.33
+
+channel_dropout:
+  _target_: emg2qwerty.transforms.ChannelDropout
+  p: 0.1  # 10% per-channel drop probability
+
 transforms:
   train:
     - ${to_tensor}
     - ${band_rotation}
     - ${temporal_jitter}
+    - ${gaussian_noise}
+    - ${amplitude_scale}
     - ${logspec}
     - ${specaug}
+    - ${channel_dropout}
 
   val:
     - ${to_tensor}

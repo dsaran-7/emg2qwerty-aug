@@ -190,6 +190,85 @@ class LogSpectrogram:
 
 
 @dataclass
+class GaussianNoise:
+    """Adds Gaussian noise to a raw EMG tensor to improve robustness to
+    signal noise and varying SNR across recording sessions.
+    The input must be of shape (T, ...).
+
+    The noise standard deviation is computed as ``std`` * per-sample signal
+    standard deviation, making the augmentation scale-invariant.
+
+    Args:
+        std (float): Noise level as a fraction of the signal standard deviation.
+            (default: 0.05)
+    """
+
+    std: float = 0.05
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        noise = torch.randn_like(tensor) * self.std * tensor.std()
+        return tensor + noise
+
+
+@dataclass
+class RandomAmplitudeScale:
+    """Randomly scales the amplitude of the EMG signal to handle gain
+    variability across recording sessions and electrode contacts.
+    The input must be of shape (T, ...).
+
+    The scale factor is sampled log-uniformly from
+    [``min_scale``, ``max_scale``] so that up- and down-scaling are
+    equally likely.
+
+    Args:
+        min_scale (float): Minimum scale factor. (default: 0.75)
+        max_scale (float): Maximum scale factor. (default: 1.33)
+    """
+
+    min_scale: float = 0.75
+    max_scale: float = 1.33
+
+    def __post_init__(self) -> None:
+        assert 0 < self.min_scale <= self.max_scale
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        log_scale = np.random.uniform(
+            np.log(self.min_scale), np.log(self.max_scale)
+        )
+        return tensor * float(np.exp(log_scale))
+
+
+@dataclass
+class ChannelDropout:
+    """Randomly zeroes out entire electrode channels in the spectrogram,
+    simulating missing or poor-quality electrode contacts and forcing the
+    model to rely on the remaining channels.
+
+    The input must be of shape (T, bands, channels, freq).
+
+    Args:
+        p (float): Independent drop probability per channel. (default: 0.1)
+        channel_dim (int): The electrode channel dimension. (default: 2)
+    """
+
+    p: float = 0.1
+    channel_dim: int = 2
+
+    def __post_init__(self) -> None:
+        assert 0.0 <= self.p < 1.0
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        n_channels = tensor.shape[self.channel_dim]
+        keep = torch.bernoulli(
+            torch.full((n_channels,), 1.0 - self.p)
+        ).to(tensor.dtype)
+        # Reshape for broadcasting: (n_channels,) -> correct broadcast shape
+        shape = [1] * tensor.ndim
+        shape[self.channel_dim] = n_channels
+        return tensor * keep.view(shape)
+
+
+@dataclass
 class SpecAugment:
     """Applies time and frequency masking as per the paper
     "SpecAugment: A Simple Data Augmentation Method for Automatic Speech
