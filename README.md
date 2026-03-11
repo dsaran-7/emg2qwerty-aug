@@ -1,7 +1,72 @@
 # C147/247 Final Project
-### Winter 2026 
+### Winter 2026
 
 This course project is built upon the emg2qwerty work from Meta. The first section of this README provides some guidance for working with the repo and contains a running list of FAQs. **Note that the rest of the README is from the original repo and we encourage you to take a look at their work.**
+
+---
+
+## Data Augmentation Experiments
+
+This branch explores the effect of additional data augmentation techniques on EMG-to-keystroke prediction. Three new transforms were added to `emg2qwerty/transforms.py` and wired into the training pipeline via `config/transforms/log_spectrogram.yaml`.
+
+### New Augmentation Techniques
+
+#### 1. Gaussian Noise
+Adds random noise scaled to each sample's standard deviation, simulating electrode noise and signal variability.
+```python
+GaussianNoise(std=0.05)  # 5% of per-sample signal std
+```
+
+#### 2. Random Amplitude Scale
+Randomly scales signal amplitude by a log-uniform factor, simulating variation in electrode contact pressure and skin conductance across sessions.
+```python
+RandomAmplitudeScale(min_scale=0.75, max_scale=1.33)
+```
+
+#### 3. Channel Dropout
+Randomly zeros out individual EMG channels to make the model robust to poor electrode contact or signal dropout.
+```python
+ChannelDropout(p=0.1)  # 10% per-channel drop probability
+```
+
+### Augmented Train Pipeline
+
+```
+ToTensor → BandRotation → TemporalJitter → GaussianNoise →
+AmplitudeScale → LogSpectrogram → SpecAugment → ChannelDropout
+```
+
+Val/Test pipelines remain unchanged: `ToTensor → LogSpectrogram`.
+
+### Results (40 Epochs, Single User, Greedy Decoding)
+
+| Metric | Augmented (40 epochs) | Baseline (150 epochs) |
+|--------|----------------------|----------------------|
+| **test/CER** | 26.28 | 22.09 |
+| test/DER | 2.46 | — |
+| test/IER | 6.35 | — |
+| test/SER | 17.46 | — |
+| test/loss | 0.835 | — |
+
+**Validation metrics (epoch 40):**
+
+| Metric | Value |
+|--------|-------|
+| val/CER | 26.85 |
+| val/DER | 2.13 |
+| val/IER | 8.73 |
+| val/SER | 15.99 |
+| val/loss | 0.896 |
+
+### Discussion
+
+The augmented model achieves a test CER of **26.28** at 40 epochs, compared to the baseline CER of **22.09** at 150 epochs. This gap is primarily attributable to the difference in training duration rather than the augmentations themselves. Key observations:
+
+- Augmentation techniques increase training difficulty, slowing convergence — more epochs are needed to reach the same loss level as the unaugmented baseline.
+- The new transforms target cross-session variability (amplitude, noise, dropout), but the single-user personalized model already sees low variability across its 16 training sessions, limiting the benefit.
+- A fair comparison would require running both models for the same number of epochs (150).
+
+---
 
 ## Guiding Tips + FAQs
 _Last updated 2/13/2025_
