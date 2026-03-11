@@ -108,7 +108,7 @@ class WindowedEMGDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             collate_fn=WindowedEMGDataset.collate,
             pin_memory=True,
-            persistent_workers=True,
+            persistent_workers=self.num_workers > 0,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -119,7 +119,7 @@ class WindowedEMGDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             collate_fn=WindowedEMGDataset.collate,
             pin_memory=True,
-            persistent_workers=True,
+            persistent_workers=self.num_workers > 0,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -134,7 +134,7 @@ class WindowedEMGDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             collate_fn=WindowedEMGDataset.collate,
             pin_memory=True,
-            persistent_workers=True,
+            persistent_workers=self.num_workers > 0,
         )
 
 
@@ -216,12 +216,15 @@ class TDSConvCTCModule(pl.LightningModule):
         T_diff = inputs.shape[0] - emissions.shape[0]
         emission_lengths = input_lengths - T_diff
 
+        # CTC loss is not natively supported on MPS; compute on CPU explicitly
+        # to avoid the slow automatic fallback with PYTORCH_ENABLE_MPS_FALLBACK.
+        _device = emissions.device
         loss = self.ctc_loss(
-            log_probs=emissions,  # (T, N, num_classes)
-            targets=targets.transpose(0, 1),  # (T, N) -> (N, T)
-            input_lengths=emission_lengths,  # (N,)
-            target_lengths=target_lengths,  # (N,)
-        )
+            log_probs=emissions.cpu(),
+            targets=targets.transpose(0, 1).cpu(),
+            input_lengths=emission_lengths.cpu(),
+            target_lengths=target_lengths.cpu(),
+        ).to(_device)
 
         # Decode emissions
         predictions = self.decoder.decode_batch(
